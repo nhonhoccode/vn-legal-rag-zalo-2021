@@ -1,0 +1,56 @@
+# ============================================================
+# docker-compose.yml — Dev local stack
+# Phase 1 skeleton. Services backend/frontend sẽ uncomment ở Phase 7-8.
+# ============================================================
+version: "3.9"
+
+name: vn-legal-rag
+
+services:
+  # ----- Redis (cache + session + rate limit) -----
+  redis:
+    image: redis:7-alpine
+    container_name: vn-legal-rag-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"   # bind localhost only
+    volumes:
+      - ./data/redis:/data
+    command: redis-server --save 60 1 --loglevel warning
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ----- Backend FastAPI (uncomment ở Phase 7) -----
+  # api:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: vn-legal-rag-api
+  #   restart: unless-stopped
+  #   env_file: ./backend/.env
+  #   ports:
+  #     - "127.0.0.1:8000:8000"
+  #   volumes:
+  #     - ./data:/app/data
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+  #   command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ----- Frontend Next.js (uncomment ở Phase 7b) -----
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   container_name: vn-legal-rag-frontend
+  #   restart: unless-stopped
+  #   env_file: ./frontend/.env.local
+  #   ports:
+  #     - "127.0.0.1:3000:3000"
+  #   depends_on:
+  #     - api
+
+# Volumes managed via bind-mount above (./data) cho dễ inspect.

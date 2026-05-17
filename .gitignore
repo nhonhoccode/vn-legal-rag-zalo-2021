@@ -1,0 +1,107 @@
+# ============================================================
+# Project-wide gitignore
+# ============================================================
+
+# ----- Secrets -----
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets/
+
+# ----- Python -----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+*.egg-info/
+dist/
+build/
+.ipynb_checkpoints/
+
+# ----- Data (large, locally generated) -----
+# Gitignore raw + processed; .gitkeep giữ folder structure.
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/chroma_db/*
+!data/chroma_db/.gitkeep
+
+# Eval results: keep latest commit, ignore individual run snapshots
+data/eval/results/*.json
+!data/eval/results/.gitkeep
+
+# Redis local snapshot
+data/redis/
+
+# ----- IDE -----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ----- Docker -----
+*.pid
+
+# ----- Logs -----
+*.log
+logs/
+
+# ----- OS -----
+.DS_Store
+
+# ----- Notebook outputs (Kaggle) -----
+notebooks/*-output/
+notebooks/.ipynb_checkpoints/
+notebooks/checkpoint_*/
+notebooks/*.zip
+
+# ----- Backup files (created during ops) -----
+*.bak
+*.bak_*
+*.old.bak
+data/chroma_backup/
+data/processed/bm25.pkl
+data/processed/articles_clean.jsonl
+
+# ----- Model / HF cache -----
+.cache/
+~/.cache/huggingface/
+models/
+*.safetensors
+*.bin
+
+# ----- Frontend (extra safety) -----
+frontend/node_modules/
+frontend/.next/
+frontend/.turbo/
+frontend/out/
+
+# ----- Docker / CI -----
+.dockerignore.bak
+docker-compose.override.yml
+*.tar
+*.tar.gz
+
+# Docs AI
+docs/
+BaiBao_VoTrongNhon_VNLegalRAG.pdf
+BaiBao_VoTrongNhon_VNLegalRAG.md
+BaoCao_VN_Legal_RAG.md
+BaoCao_VN_Legal_RAG.pdf

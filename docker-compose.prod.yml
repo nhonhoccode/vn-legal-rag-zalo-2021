@@ -1,0 +1,105 @@
+# ============================================================
+# Production stack — Docker Compose
+# ============================================================
+# Run:
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Required env (in project_AI/.env):
+#   CLOUDFLARE_TUNNEL_TOKEN  - từ Cloudflare Zero Trust → Tunnels
+#   DOMAIN_FRONTEND          - vd: nlp-rag.votrongnhon.cloud
+#   DOMAIN_API               - vd: api.votrongnhon.cloud
+#
+# Backend .env phải có sẵn (xem backend/.env.example).
+# ============================================================
+# version: "3.9"
+
+name: vn-legal-rag
+
+services:
+  # ----- Redis: cache + multi-turn sessions -----
+  redis:
+    image: redis:7-alpine
+    container_name: vn-rag-redis
+    restart: unless-stopped
+    volumes:
+      - ./data/redis:/data
+    command: redis-server --save 60 1 --loglevel warning --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - rag-internal
+
+  # ----- Backend FastAPI -----
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: vn-legal-rag-api:${TAG:-latest}
+    container_name: vn-rag-api
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      # Override để dùng docker network names
+      REDIS_URL: redis://redis:6379/0
+      CHROMA_PERSIST_DIR: /app/data/chroma_db
+      # 9router chạy trên host VPS (port 20128). "localhost" trong container = chính container.
+      # Override → resolve qua host-gateway (extra_hosts bên dưới).
+      CUSTOM_LLM_BASE_URL: http://host.docker.internal:20128/v1
+    volumes:
+      # Mount data từ host — chứa ChromaDB indexed từ Kaggle + chunks JSONL.
+      - ./data:/app/data:rw
+    extra_hosts:
+      # Cho phép gọi 9router chạy ở host VPS qua localhost
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    networks:
+      - rag-internal
+
+  # ----- Cloudflare Tunnel — public ingress -----
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: vn-rag-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - api
+    networks:
+      - rag-internal
+
+  # ----- Frontend Next.js 15 -----
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: vn-legal-rag-frontend:${TAG:-latest}
+    container_name: vn-rag-frontend
+    restart: unless-stopped
+    env_file: ./frontend/.env.local
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/login"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - rag-internal
+
+networks:
+  rag-internal:
+    driver: bridge

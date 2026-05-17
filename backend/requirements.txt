@@ -1,0 +1,59 @@
+# ============================================================
+# Backend dependencies for RAG + Semantic Search Vietnamese Legal
+# ============================================================
+# Pin versions để CI reproducible.
+# Phase 1 chỉ cần subset (config + smoke test). Phase tiếp theo sẽ uncomment.
+
+# --- Phase 1: Config + smoke test ---
+pydantic==2.10.4
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+
+# --- Phase 1: Test ---
+pytest==8.3.4
+pytest-asyncio==0.25.2
+
+# --- Phase 1: Lint ---
+ruff==0.9.2
+mypy==1.14.1
+
+# --- Phase 2: Data ingestion ---
+huggingface-hub==0.27.1
+datasets==3.2.0
+tqdm==4.67.1
+
+# --- Phase 3: Preprocessing ---
+pyvi==0.1.1   # Vietnamese tokenizer cho BM25
+# pdfplumber==0.11.5  # Optional, future PDF parsing
+# beautifulsoup4==4.12.3
+# lxml==5.3.0
+
+# --- Phase 4: Chunking (no extra deps; pure Python) ---
+
+# --- Phase 5: Embeddings ---
+sentence-transformers==3.3.1
+diskcache==5.6.3
+# transformers, torch là transitive deps của sentence-transformers
+# numpy đã có (transitive từ datasets)
+
+# --- Phase 6: Vector DB ---
+chromadb==0.6.3
+
+# --- Phase 7: API + Retrieval ---
+# fastapi already pulled by chromadb transitive
+slowapi==0.1.9
+python-jose[cryptography]==3.3.0   # JWT
+rank-bm25==0.2.2
+
+# --- Phase 9: Multi-turn sessions ---
+redis==5.2.1               # async redis client
+fakeredis==2.26.2          # in-memory Redis cho tests
+
+# --- Phase 8: LLM clients ---
+openai==1.59.6              # OpenRouter/9router/DeepSeek compat via OpenAI SDK
+# httpx đã có (transitive từ openai)
+# google-genai==0.4.0       # Gemini native — chưa cần (user dùng 9router)
+
+# --- Phase 11: Eval ---
+ragas==0.2.10
+langchain-openai==0.2.14    # ChatOpenAI wrapper cho ragas judge (compatible 9router)

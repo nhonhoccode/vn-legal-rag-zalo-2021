@@ -1,0 +1,157 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+ * Modern Trust palette
+ * Cream warm background + Indigo deep primary + Mustard accent
+ * Ink-black for neubrutalism borders/shadows
+ * ============================================================ */
+@layer base {
+  :root {
+    --background: 250 247 242;        /* cream #FAF7F2 */
+    --foreground: 24 22 32;           /* near-black ink */
+    --muted: 240 235 226;             /* warm grey */
+    --muted-foreground: 99 91 80;     /* warm dark grey */
+    --primary: 45 58 140;             /* indigo deep #2D3A8C */
+    --primary-foreground: 250 247 242;
+    --accent: 212 163 64;             /* mustard #D4A340 */
+    --accent-foreground: 24 22 32;
+    --border: 24 22 32;               /* ink border (neubrut accent) */
+    --card: 255 252 247;              /* slightly brighter cream */
+    --ink: 24 22 32;                  /* pure ink for shadows */
+  }
+
+  .dark {
+    --background: 15 15 14;
+    --foreground: 240 235 226;
+    --muted: 35 32 28;
+    --muted-foreground: 167 160 148;
+    --primary: 132 142 226;
+    --primary-foreground: 15 15 14;
+    --accent: 234 191 95;
+    --accent-foreground: 15 15 14;
+    --border: 240 235 226;
+    --card: 22 22 21;
+    --ink: 240 235 226;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Serif for big headings only */
+  h1, h2 {
+    @apply font-serif;
+  }
+}
+
+/* ============================================================
+ * Markdown styles — editorial typography
+ * ============================================================ */
+.markdown-body {
+  line-height: 1.7;
+}
+.markdown-body p { margin: 0.6em 0; }
+.markdown-body p:first-child { margin-top: 0; }
+.markdown-body p:last-child { margin-bottom: 0; }
+.markdown-body ul, .markdown-body ol { margin: 0.6em 0; padding-left: 1.5em; }
+.markdown-body ul { list-style: disc; }
+.markdown-body ol { list-style: decimal; }
+.markdown-body li { margin: 0.3em 0; }
+.markdown-body strong { font-weight: 600; color: rgb(var(--foreground)); }
+.markdown-body em { font-style: italic; }
+.markdown-body code {
+  background: rgb(var(--muted));
+  padding: 0.1em 0.35em;
+  border-radius: 0.25em;
+  font-size: 0.88em;
+  font-family: ui-monospace, "SF Mono", monospace;
+}
+.markdown-body pre {
+  background: rgb(var(--muted));
+  padding: 0.85em 1em;
+  border-radius: 0.5em;
+  overflow-x: auto;
+  margin: 0.75em 0;
+}
+.markdown-body pre code { background: transparent; padding: 0; }
+.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+  font-family: var(--font-serif), Georgia, serif;
+  font-weight: 600;
+  margin: 0.8em 0 0.4em;
+  line-height: 1.3;
+}
+.markdown-body h1 { font-size: 1.3em; }
+.markdown-body h2 { font-size: 1.18em; }
+.markdown-body h3 { font-size: 1.06em; }
+.markdown-body blockquote {
+  border-left: 3px solid rgb(var(--primary));
+  padding: 0.4em 0.85em;
+  margin: 0.6em 0;
+  color: rgb(var(--muted-foreground));
+  font-style: italic;
+  background: rgb(var(--muted) / 0.4);
+}
+.markdown-body a {
+  color: rgb(var(--primary));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.markdown-body a:hover { color: rgb(var(--accent)); }
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid rgb(var(--border) / 0.2);
+  margin: 1em 0;
+}
+
+/* Streaming cursor */
+.streaming-cursor::after {
+  content: "▊";
+  display: inline-block;
+  animation: blink 1s steps(2) infinite;
+  margin-left: 2px;
+  opacity: 0.7;
+  color: rgb(var(--primary));
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* ============================================================
+ * Neubrutalism utility — accent for citation chips + cards
+ * ============================================================ */
+.neubrut {
+  border: 1.5px solid rgb(var(--ink));
+  box-shadow: 2px 2px 0 0 rgb(var(--ink));
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.neubrut:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 rgb(var(--ink));
+}
+.neubrut:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 0 rgb(var(--ink));
+}
+
+.neubrut-lg {
+  border: 2px solid rgb(var(--ink));
+  box-shadow: 4px 4px 0 0 rgb(var(--ink));
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.neubrut-lg:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 0 rgb(var(--ink));
+}
+
+/* Subtle paper texture (very subtle dot pattern) */
+.bg-paper {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    rgb(var(--ink) / 0.025) 1px,
+    transparent 0
+  );
+  background-size: 16px 16px;
+}

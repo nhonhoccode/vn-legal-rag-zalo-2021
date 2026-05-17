@@ -1,0 +1,41 @@
+[project]
+name = "vn-legal-rag-backend"
+version = "0.1.0"
+description = "RAG + Semantic Search backend cho pháp luật Việt Nam"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM"]
+ignore = ["E501"]  # line too long (Black-compatible)
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["A", "N"]
+# B008: Depends() in default arg — FastAPI idiomatic.
+"src/api/routes/**" = ["B008"]
+"src/api/main.py" = ["B008"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+# Mặc định skip integration + slow tests.
+# - integration: cần network / external services
+# - slow: cần model download (10s-2min) hoặc large I/O
+# Run all: `pytest -m ""`
+# Run only slow: `pytest -m slow`
+addopts = ["-v", "--tb=short", "--strict-markers", "-m", "not integration and not slow"]
+markers = [
+    "slow: tests cần download model hoặc heavy compute (deselect mặc định)",
+    "integration: integration tests (require external services like HF Hub)",
+]
