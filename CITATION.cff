@@ -1,0 +1,48 @@
+cff-version: 1.2.0
+message: "Nếu bạn sử dụng phần mềm hoặc kết quả thực nghiệm trong dự án này, xin trích dẫn theo metadata dưới đây."
+title: "VN Legal RAG: Vietnamese Legal Text Retrieval-Augmented Generation with Fine-tuned Sentence Embeddings"
+type: software
+authors:
+  - family-names: "Võ"
+    given-names: "Trọng Nhơn"
+    affiliation: "Khoa Công nghệ Thông tin, Trường Đại học Công nghiệp TP. Hồ Chí Minh"
+    email: "nhon22658441@student.iuh.edu.vn"
+  - family-names: "Bùi"
+    given-names: "Thanh Hùng"
+    affiliation: "Khoa Công nghệ Thông tin, Trường Đại học Công nghiệp TP. Hồ Chí Minh"
+    email: "buithanhhung@iuh.edu.vn"
+repository-code: "https://github.com/nhonhoccode/vn-legal-rag-zalo-2021"
+url: "https://nlp-rag.votrongnhon.cloud"
+abstract: >-
+  Hệ thống Retrieval-Augmented Generation cho văn bản pháp luật tiếng Việt,
+  được fine-tune trên Zalo AI Challenge 2021. Pipeline kết hợp dense retrieval
+  (ChromaDB), sparse retrieval (BM25 + pyvi), Reciprocal Rank Fusion và
+  cross-encoder reranking, với LLM generation qua OpenRouter. Bốn mô hình
+  embedding multilingual được tinh chỉnh theo hai chiến lược (in-batch và hard
+  negatives mining). Cấu hình thắng cuộc là bge-m3 hard-negatives với F2@10
+  0,3209, Recall@10 0,8985 và MRR 0,7444 trên 660 mẫu test.
+keywords:
+  - retrieval-augmented-generation
+  - vietnamese-nlp
+  - legal-text-retrieval
+  - sentence-embeddings
+  - hard-negatives-mining
+  - bm25
+  - cross-encoder-reranker
+  - bge-m3
+  - zalo-ai-challenge
+license: Apache-2.0
+date-released: 2026-05-17
+version: "1.0.0"
+preferred-citation:
+  type: article
+  title: "Truy xuất ngữ nghĩa văn bản pháp luật Việt Nam bằng fine-tune Sentence Embedding với Hard Negatives Mining"
+  authors:
+    - family-names: "Võ"
+      given-names: "Trọng Nhơn"
+      affiliation: "Khoa Công nghệ Thông tin, Trường Đại học Công nghiệp TP. Hồ Chí Minh"
+    - family-names: "Bùi"
+      given-names: "Thanh Hùng"
+      affiliation: "Khoa Công nghệ Thông tin, Trường Đại học Công nghiệp TP. Hồ Chí Minh"
+  year: 2026
+  url: "https://github.com/nhonhoccode/vn-legal-rag-zalo-2021"
