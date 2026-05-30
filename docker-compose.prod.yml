@@ -45,12 +45,14 @@ services:
       # Override để dùng docker network names
       REDIS_URL: redis://redis:6379/0
       CHROMA_PERSIST_DIR: /app/data/chroma_db
-      # 9router chạy trên host VPS (port 20128). "localhost" trong container = chính container.
-      # Override → resolve qua host-gateway (extra_hosts bên dưới).
-      CUSTOM_LLM_BASE_URL: http://host.docker.internal:20128/v1
+      # FreeModel — external endpoint, không cần host-gateway
+      CUSTOM_LLM_BASE_URL: https://api.freemodel.dev/v1
+      CUSTOM_LLM_MODEL: claude-haiku-4-5-20251001
     volumes:
       # Mount data từ host — chứa ChromaDB indexed từ Kaggle + chunks JSONL.
       - ./data:/app/data:rw
+      # HF model cache — persist qua các lần recreate container (tránh re-download 4GB+ mỗi restart)
+      - hf_cache:/root/.cache/huggingface
     extra_hosts:
       # Cho phép gọi 9router chạy ở host VPS qua localhost
       - "host.docker.internal:host-gateway"
@@ -103,3 +105,8 @@ services:
 networks:
   rag-internal:
     driver: bridge
+
+
+volumes:
+  hf_cache:
+    driver: local

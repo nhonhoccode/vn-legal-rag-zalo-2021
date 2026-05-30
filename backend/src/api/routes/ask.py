@@ -123,6 +123,7 @@ async def ask(
         session_id=result.session_id,
         standalone_query=result.standalone_query,
         metadata=result.metadata,
+        follow_up_questions=result.follow_up_questions,
     )
 
 

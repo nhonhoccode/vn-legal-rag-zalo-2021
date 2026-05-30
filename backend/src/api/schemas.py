@@ -93,6 +93,7 @@ class AskResponse(BaseModel):
     session_id: str | None = None
     standalone_query: str | None = None
     metadata: dict = Field(default_factory=dict)
+    follow_up_questions: list[str] = Field(default_factory=list)
 
 
 # ============================================================

@@ -1,19 +1,16 @@
 "use client";
 
-import { useState, useRef, useEffect, FormEvent } from "react";
+import { useState, useRef, useEffect, FormEvent, useCallback } from "react";
 import {
-  Send,
-  Loader2,
-  Sparkles,
-  MessageSquare,
-  Copy,
-  Check,
-  Download,
-  Zap,
-  ZapOff,
+  Send, Loader2, Sparkles, MessageSquare, Copy, Check,
+  Download, Zap, ZapOff, Moon, Sun, Globe, User, History,
+  Share2, X, ChevronDown, ChevronUp,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { signOut } from "next-auth/react";
+import { type Lang, t, getStoredLang, setStoredLang } from "@/lib/i18n";
+import { saveSession, loadHistory, clearHistory, formatRelative } from "@/lib/history";
 
 type Citation = {
   text_index: number;
@@ -47,6 +44,7 @@ type Message = {
   stage?: "retrieval" | "reranking" | "generation" | null;
   errorKind?: "timeout" | "network" | "other" | null;
   retryQuery?: string;
+  followUpQuestions?: string[];
 };
 
 const STAGE_LABEL: Record<string, string> = {
@@ -125,18 +123,130 @@ const FOLLOW_UP_HINTS = [
   "Tôi nên làm gì tiếp theo?",
 ];
 
-export default function ChatClient() {
+interface ChatClientProps {
+  userName?: string;
+  userEmail?: string;
+  userImage?: string;
+}
+
+export default function ChatClient({ userName = "Khách", userEmail = "", userImage }: ChatClientProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [useStreaming, setUseStreaming] = useState(true);
+  const [lang, setLang] = useState<Lang>("vi");
+  const [isDark, setIsDark] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(false);
+  const [shareModal, setShareModal] = useState<string | null>(null); // URL string when open
+  const [historyEntries, setHistoryEntries] = useState<ReturnType<typeof loadHistory>>([]);
+  const [loadingSession, setLoadingSession] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Init theme + lang from localStorage
+  useEffect(() => {
+    setLang(getStoredLang());
+    setIsDark(document.documentElement.classList.contains("dark"));
+    setHistoryEntries(loadHistory());
+  }, []);
+
+  // Item 5: reset state on bfcache restore
+  useEffect(() => {
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        setMessages([]);
+        setSessionId("");
+        setIsLoading(false);
+      }
+    };
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  function toggleTheme() {
+    const next = !isDark;
+    setIsDark(next);
+    document.documentElement.classList.toggle("dark", next);
+    localStorage.setItem("vn-legal-theme", next ? "dark" : "light");
+  }
+
+  function toggleLang() {
+    const next: Lang = lang === "vi" ? "en" : "vi";
+    setLang(next);
+    setStoredLang(next);
+  }
+
+  // Item 13: share link
+  function shareConversation() {
+    if (!messages.length) return;
+    const payload = messages.map((m) => ({ r: m.role[0], c: m.content.slice(0, 400) }));
+    try {
+      const json = JSON.stringify(payload);
+      // UTF-8 safe + URL-safe base64: encodeURI → unescape → btoa → replace +/= → URL safe
+      const b64 = btoa(unescape(encodeURIComponent(json)));
+      const urlSafe = b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+      const url = `${window.location.origin}${window.location.pathname}?c=${urlSafe}`;
+      setShareModal(url);
+    } catch {
+      setShareModal(null);
+    }
+  }
+
+  // Load old session from history (click on history entry)
+  async function loadOldSession(sid: string) {
+    setLoadingSession(true);
+    setShowDashboard(false);
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`/api/session-proxy?id=${encodeURIComponent(sid)}`);
+      if (!res.ok) {
+        // Fallback: just set session ID so next query continues the conversation
+        setSessionId(sid);
+        setMessages([]);
+        return;
+      }
+      const data = await res.json();
+      const loaded: Message[] = (data.turns ?? []).map((t: { role: string; content: string }) => ({
+        id: crypto.randomUUID(),
+        role: t.role as "user" | "assistant",
+        content: t.content,
+        timestamp: Date.now(),
+      }));
+      setMessages(loaded);
+      setSessionId(sid);
+    } catch {
+      setSessionId(sid);
+      setMessages([]);
+    } finally {
+      setLoadingSession(false);
+    }
+  }
+
+  // Load shared conversation from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const c = params.get("c");
+    if (!c) return;
+    try {
+      // Reverse URL-safe base64 → standard base64 → decode UTF-8
+      const standard = c.replace(/-/g, "+").replace(/_/g, "/");
+      const padded = standard + "=".repeat((4 - (standard.length % 4)) % 4);
+      const decoded = JSON.parse(decodeURIComponent(escape(atob(padded))));
+      const loaded: Message[] = decoded.map((m: { r: string; c: string }) => ({
+        id: crypto.randomUUID(),
+        role: m.r === "u" ? "user" : "assistant",
+        content: m.c,
+        timestamp: Date.now(),
+      }));
+      setMessages(loaded);
+      window.history.replaceState({}, "", window.location.pathname);
+    } catch { /* ignore invalid share links */ }
+  }, []);
 
   async function sendQuery(query: string) {
     if (!query.trim() || isLoading) return;
@@ -158,9 +268,30 @@ export default function ChatClient() {
     setInput("");
     setIsLoading(true);
 
+    // Save to localStorage history
+    if (!sessionId) {
+      const newSid = crypto.randomUUID().slice(0, 8);
+      saveSession(newSid, query);
+      setHistoryEntries(loadHistory());
+    } else {
+      saveSession(sessionId, query);
+      setHistoryEntries(loadHistory());
+    }
+
     try {
       if (useStreaming) {
-        await sendStreaming(query, assistantMsg.id);
+        try {
+          await sendStreaming(query, assistantMsg.id);
+        } catch (streamErr) {
+          // Item 9: auto-retry once on stream interrupt
+          console.warn("Stream failed, retrying once:", streamErr);
+          setMessages((m) => m.map((msg) =>
+            msg.id === assistantMsg.id
+              ? { ...msg, content: t(lang, "retrying"), loading: true, streaming: false }
+              : msg
+          ));
+          await sendStreaming(query, assistantMsg.id);
+        }
       } else {
         await sendNonStreaming(query, assistantMsg.id);
       }
@@ -173,10 +304,10 @@ export default function ChatClient() {
         ? "network"
         : "other";
       const friendly = kind === "timeout"
-        ? "⏱️ Server đang khởi động (lần đầu tải model ~2 phút) hoặc câu hỏi quá phức tạp. Bạn thử lại sau ít phút nhé."
+        ? `⏱️ ${t(lang, "errorTimeout")}`
         : kind === "network"
-        ? "🌐 Mất kết nối mạng. Kiểm tra wifi và thử lại."
-        : `Lỗi: ${msgStr}`;
+        ? `🌐 ${t(lang, "errorNetwork")}`
+        : `${t(lang, "errorGeneric")}: ${msgStr}`;
       setMessages((m) =>
         m.map((msg) =>
           msg.id === assistantMsg.id
@@ -199,6 +330,13 @@ export default function ChatClient() {
 
     if (!res.ok) {
       const isTimeout = res.status === 524 || res.status === 502 || res.status === 504;
+      if (res.status === 401) {
+        const body = await res.text();
+        if (body.includes("SESSION_EXPIRED")) {
+          window.location.href = "/login";
+          return;
+        }
+      }
       throw new Error(isTimeout ? `TIMEOUT (HTTP ${res.status})` : `HTTP ${res.status}: ${(await res.text()).slice(0, 100)}`);
     }
     const data = await res.json();
@@ -229,6 +367,13 @@ export default function ChatClient() {
 
     if (!res.ok || !res.body) {
       const isTimeout = res.status === 524 || res.status === 502 || res.status === 504;
+      if (res.status === 401) {
+        const body = await res.text();
+        if (body.includes("SESSION_EXPIRED")) {
+          window.location.href = "/login";
+          return;
+        }
+      }
       throw new Error(isTimeout ? `TIMEOUT (HTTP ${res.status})` : `HTTP ${res.status}: ${(await res.text()).slice(0, 100)}`);
     }
 
@@ -276,11 +421,12 @@ export default function ChatClient() {
           } else if (event.type === "done") {
             const citations = event.citations as Citation[];
             const sid = event.session_id as string | undefined;
+            const followUpQuestions = (event.follow_up_questions as string[] | undefined) ?? [];
             if (sid && !sessionId) setSessionId(sid);
             setMessages((m) =>
               m.map((msg) =>
                 msg.id === assistantMsgId
-                  ? { ...msg, citations, streaming: false, loading: false, stage: null }
+                  ? { ...msg, citations, streaming: false, loading: false, stage: null, followUpQuestions }
                   : msg
               )
             );
@@ -323,11 +469,173 @@ export default function ChatClient() {
   }
 
   const hasConversation = messages.length > 0;
+  const lastMsg = messages[messages.length - 1];
   const showFollowUps =
-    hasConversation && !isLoading && messages[messages.length - 1]?.role === "assistant";
+    hasConversation &&
+    !isLoading &&
+    lastMsg?.role === "assistant" &&
+    !lastMsg?.loading &&
+    !lastMsg?.streaming;
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
+      {/* ── Header ── */}
+      <header className="border-b-2 border-ink bg-card">
+        <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
+          <div>
+            <h1 className="font-serif text-xl font-semibold tracking-tight">
+              {t(lang, "appTitle").includes("Pháp") ? (
+                <>Pháp Luật <span className="text-primary">Việt Nam</span></>
+              ) : t(lang, "appTitle")}
+            </h1>
+            <p className="text-xs text-muted-foreground">{t(lang, "appSubtitle")}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* Theme toggle */}
+            <button onClick={toggleTheme} title="Toggle dark mode"
+              className="neubrut rounded-lg bg-card p-1.5 text-foreground hover:bg-muted">
+              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
+            {/* Lang toggle */}
+            <button onClick={toggleLang} title="Switch language"
+              className="neubrut rounded-lg bg-card px-2 py-1 text-xs font-bold text-foreground hover:bg-muted">
+              {lang === "vi" ? "EN" : "VI"}
+            </button>
+            {/* User avatar → dashboard */}
+            <button onClick={() => { setShowDashboard(true); setHistoryEntries(loadHistory()); }}
+              className="neubrut flex items-center gap-1.5 rounded-lg bg-card px-2 py-1.5 hover:bg-muted">
+              {userImage ? (
+                <img src={userImage} alt={userName} className="h-6 w-6 rounded-full border border-ink" />
+              ) : (
+                <User className="h-4 w-4" />
+              )}
+              <span className="hidden max-w-[120px] truncate text-xs font-medium sm:inline">{userName}</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* ── Dashboard Modal ── */}
+      {showDashboard && (
+        <div className="fixed inset-0 z-50 flex items-start justify-end">
+          <div className="absolute inset-0 bg-ink/20" onClick={() => setShowDashboard(false)} />
+          <div className="relative m-4 mt-16 w-80 rounded-xl border-2 border-ink bg-card shadow-brut-lg">
+            <div className="flex items-center justify-between border-b border-border/30 px-4 py-3">
+              <span className="font-semibold">{t(lang, "dashTitle")}</span>
+              <button onClick={() => setShowDashboard(false)}><X className="h-4 w-4" /></button>
+            </div>
+            <div className="space-y-4 p-4">
+              {/* User info */}
+              <div className="flex items-center gap-3">
+                {userImage ? (
+                  <img src={userImage} alt={userName} className="h-10 w-10 rounded-full border-2 border-ink" />
+                ) : (
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground border-2 border-ink text-sm font-bold">
+                    {userName[0]?.toUpperCase()}
+                  </div>
+                )}
+                <div>
+                  <div className="font-medium text-sm">{userName}</div>
+                  {userEmail && <div className="text-xs text-muted-foreground">{userEmail}</div>}
+                </div>
+              </div>
+              {/* Stats */}
+              <div className="rounded-lg bg-muted/50 px-3 py-2 text-xs">
+                <span className="font-medium">{t(lang, "dashStats")}: </span>
+                {Math.floor(messages.length / 2)} {t(lang, "dashQueries")}
+              </div>
+              {/* Theme */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm">{t(lang, "dashTheme")}</span>
+                <button onClick={toggleTheme}
+                  className="neubrut flex items-center gap-1.5 rounded-lg bg-muted px-3 py-1 text-xs font-semibold">
+                  {isDark ? <Sun className="h-3 w-3" /> : <Moon className="h-3 w-3" />}
+                  {isDark ? t(lang, "dashThemeLight") : t(lang, "dashThemeDark")}
+                </button>
+              </div>
+              {/* Lang */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm">{t(lang, "dashLang")}</span>
+                <button onClick={toggleLang}
+                  className="neubrut flex items-center gap-1.5 rounded-lg bg-muted px-3 py-1 text-xs font-semibold">
+                  <Globe className="h-3 w-3" />
+                  {lang === "vi" ? "Tiếng Việt → English" : "English → Tiếng Việt"}
+                </button>
+              </div>
+              {/* History */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="flex items-center gap-1 text-sm font-medium">
+                    <History className="h-3.5 w-3.5" />
+                    {t(lang, "dashHistory")}
+                  </span>
+                  {historyEntries.length > 0 && (
+                    <button onClick={() => { clearHistory(); setHistoryEntries([]); }}
+                      className="text-xs text-muted-foreground hover:text-foreground">Xóa tất cả</button>
+                  )}
+                </div>
+                {historyEntries.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">{t(lang, "dashNoHistory")}</p>
+                ) : (
+                  <div className="max-h-48 space-y-1 overflow-y-auto">
+                    {historyEntries.map((h) => (
+                      <button
+                        key={h.sessionId}
+                        onClick={() => loadOldSession(h.sessionId)}
+                        disabled={loadingSession}
+                        className="w-full rounded-lg bg-muted/40 px-3 py-2 text-left text-xs hover:bg-muted/80 transition disabled:opacity-50"
+                      >
+                        <div className="truncate font-medium text-foreground">{h.firstQuery}</div>
+                        <div className="text-muted-foreground">{formatRelative(h.timestamp)} · {h.queryCount} {t(lang, "dashQueries")}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Logout */}
+              <button
+                onClick={() => signOut({ callbackUrl: "/login" })}
+                className="neubrut w-full rounded-lg bg-card py-2 text-xs font-semibold text-foreground hover:bg-muted"
+              >
+                {t(lang, "logout")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Share Modal ── */}
+      {shareModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-ink/30" onClick={() => setShareModal(null)} />
+          <div className="relative w-full max-w-lg rounded-xl border-2 border-ink bg-card shadow-brut-lg p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="font-semibold">Chia sẻ hội thoại</span>
+              <button onClick={() => setShareModal(null)}><X className="h-4 w-4" /></button>
+            </div>
+            <p className="mb-3 text-xs text-muted-foreground">Copy link dưới đây và gửi cho người khác. Người nhận cần đăng nhập để xem.</p>
+            <div className="flex gap-2">
+              <input
+                readOnly
+                value={shareModal}
+                onClick={(e) => (e.target as HTMLInputElement).select()}
+                className="flex-1 rounded-lg bg-muted px-3 py-2 text-xs font-mono"
+                style={{ border: "1px solid rgb(var(--ink) / 0.4)" }}
+              />
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(shareModal).catch(() => {});
+                  const inp = document.querySelector<HTMLInputElement>("[data-share-input]");
+                  inp?.select();
+                }}
+                className="neubrut flex items-center gap-1 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground"
+              >
+                <Copy className="h-3 w-3" /> Copy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div
         ref={scrollRef}
         className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-4 overflow-y-auto px-4 py-6"
@@ -339,13 +647,18 @@ export default function ChatClient() {
             {messages.map((m) => (
               <MessageBubble key={m.id} message={m} onRetry={sendQuery} />
             ))}
-            {showFollowUps && <FollowUpSuggestions onPick={(q) => sendQuery(q)} />}
+            {showFollowUps && (
+              <FollowUpSuggestions
+                questions={lastMsg?.followUpQuestions}
+                onPick={(q) => sendQuery(q)}
+              />
+            )}
           </>
         )}
       </div>
 
       <form onSubmit={handleSubmit} className="border-t-2 border-ink bg-card">
-        {hasConversation && sessionId && (
+        {hasConversation && (
           <div className="mx-auto max-w-4xl px-4 pt-2">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
               <div className="flex items-center gap-2">
@@ -376,7 +689,16 @@ export default function ChatClient() {
                   title="Download hội thoại JSON"
                 >
                   <Download className="h-3 w-3" />
-                  Save
+                  {t(lang, "save")}
+                </button>
+                <button
+                  type="button"
+                  onClick={shareConversation}
+                  className="neubrut flex items-center gap-1 rounded-md bg-card px-2 py-1 font-semibold"
+                  title="Share link"
+                >
+                  <Share2 className="h-3 w-3" />
+                  {t(lang, "share")}
                 </button>
               </div>
             </div>
@@ -499,11 +821,18 @@ function EmptyState({ onPickQuestion }: { onPickQuestion: (q: string) => void })
   );
 }
 
-function FollowUpSuggestions({ onPick }: { onPick: (q: string) => void }) {
+function FollowUpSuggestions({
+  questions,
+  onPick,
+}: {
+  questions?: string[];
+  onPick: (q: string) => void;
+}) {
+  const list = questions && questions.length > 0 ? questions : FOLLOW_UP_HINTS;
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2 px-1">
       <span className="text-xs font-medium text-muted-foreground">Gợi ý hỏi tiếp:</span>
-      {FOLLOW_UP_HINTS.map((q) => (
+      {list.map((q) => (
         <button
           key={q}
           onClick={() => onPick(q)}
@@ -645,24 +974,60 @@ function MessageBubble({ message, onRetry }: { message: Message; onRetry?: (quer
           </div>
         )}
         {message.sources && message.sources.length > 0 && (
-          <details className="mt-2 text-xs text-muted-foreground">
-            <summary className="cursor-pointer select-none hover:text-foreground">
-              📚 {message.sources.length} nguồn tham khảo
-            </summary>
-            <div className="mt-2 space-y-2">
-              {message.sources.slice(0, 5).map((s, i) => (
-                <div key={i} className="rounded border border-border/40 bg-muted/30 p-2">
-                  <div className="font-medium">
-                    {s.law_id} • Điều {s.article_id}
-                    <span className="ml-1 text-muted-foreground">[{s.score.toFixed(3)}]</span>
-                  </div>
-                  <div className="mt-1 line-clamp-3 text-muted-foreground">{s.text}</div>
-                </div>
-              ))}
-            </div>
-          </details>
+          <SourceList sources={message.sources} />
         )}
       </div>
+    </div>
+  );
+}
+
+// Item 7: expandable source preview
+function SourceList({ sources }: { sources: Source[] }) {
+  const [open, setOpen] = useState(false);
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  return (
+    <div className="mt-2 text-xs text-muted-foreground">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 hover:text-foreground"
+      >
+        {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        📚 {sources.length} nguồn tham khảo
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2">
+          {sources.slice(0, 5).map((s, i) => (
+            <div
+              key={i}
+              className="rounded-lg border border-border/40 bg-muted/30 overflow-hidden"
+              style={{ boxShadow: "1px 1px 0 0 rgb(var(--ink) / 0.15)" }}
+            >
+              <button
+                onClick={() => setExpandedIdx(expandedIdx === i ? null : i)}
+                className="flex w-full items-start justify-between gap-2 p-2 text-left hover:bg-muted/50"
+              >
+                <div>
+                  <span className="font-semibold text-foreground">
+                    {s.law_id} · Điều {s.article_id}
+                  </span>
+                  {s.law_title && (
+                    <span className="ml-1 text-muted-foreground">— {s.law_title.slice(0, 40)}</span>
+                  )}
+                  <span className="ml-1 rounded bg-accent/20 px-1 text-[10px] font-medium text-accent-foreground">
+                    {(s.score * 100).toFixed(0)}%
+                  </span>
+                </div>
+                {expandedIdx === i ? <ChevronUp className="h-3 w-3 shrink-0" /> : <ChevronDown className="h-3 w-3 shrink-0" />}
+              </button>
+              {expandedIdx === i && (
+                <div className="border-t border-border/30 bg-background/50 p-2 text-xs leading-relaxed text-foreground/80">
+                  {s.text}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -5,6 +5,7 @@ Single-turn ở Phase 8. Multi-turn + session sẽ ở Phase 9.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from collections.abc import AsyncIterator
@@ -54,6 +55,7 @@ class AskResult:
     session_id: str | None = None
     standalone_query: str | None = None
     metadata: dict = field(default_factory=dict)
+    follow_up_questions: list[str] = field(default_factory=list)
 
 
 class RAGPipeline:
@@ -142,6 +144,30 @@ class RAGPipeline:
             session_id=session_id,
             metadata={"intent": Intent.CHITCHAT.value},
         )
+
+    async def _generate_follow_ups(self, query: str, answer: str) -> list[str]:
+        """Generate 3 short follow-up questions relevant to the conversation."""
+        try:
+            prompt = (
+                f"Dựa vào câu hỏi và câu trả lời pháp luật sau, hãy tạo đúng 3 câu hỏi ngắn "
+                f"(tối đa 8 từ) bằng tiếng Việt để người dùng có thể hỏi tiếp. "
+                f"Chỉ trả về 3 câu hỏi, mỗi câu 1 dòng, không đánh số, không gạch đầu dòng.\n\n"
+                f"Câu hỏi: {query}\n"
+                f"Câu trả lời: {answer[:600]}"
+            )
+            resp = await self.llm.complete(
+                [LLMMessage(role="user", content=prompt)],
+                max_tokens=90,
+                temperature=0.8,
+            )
+            lines = [
+                ln.strip().lstrip("•-*123456789. ").strip()
+                for ln in resp.text.split("\n")
+                if ln.strip()
+            ]
+            return [ln for ln in lines if ln][:3]
+        except Exception:
+            return []
 
     def _short_circuit_result(
         self, query: str, answer: str, intent: Intent, t0: float, session_id: str | None
@@ -240,12 +266,16 @@ class RAGPipeline:
 
         total_ms = int((time.time() - t0) * 1000)
 
+        # Item 6: run follow-up generation in parallel with nothing else to wait on
+        follow_ups = [] if refused else await self._generate_follow_ups(query, response.text)
+
         return AskResult(
             query=query,
             answer=response.text,
             citations=citations,
             sources=hits,
             refused=refused,
+            follow_up_questions=follow_ups,
             latency_ms=total_ms,
             model=response.model,
             retrieval_ms=retrieval_ms,
@@ -366,6 +396,8 @@ class RAGPipeline:
             else build_messages(query, hits)
         )
         collected: list[str] = []
+        follow_up_task: asyncio.Task | None = None
+
         async for chunk in self.llm.complete_stream(
             messages,
             max_tokens=max_tokens,
@@ -373,6 +405,10 @@ class RAGPipeline:
         ):
             collected.append(chunk)
             yield {"type": "token", "value": chunk}
+            # Item 6: start follow-up generation early (after first 50 chars so we have context)
+            if follow_up_task is None and len("".join(collected)) > 50:
+                partial = "".join(collected)
+                follow_up_task = asyncio.create_task(self._generate_follow_ups(query, partial))
 
         full_answer = "".join(collected)
         citations = parse_citations(full_answer, hits)
@@ -391,6 +427,13 @@ class RAGPipeline:
             )
 
         total_ms = int((time.time() - t0) * 1000)
+        # Item 6: await follow-up task (may already be done)
+        if refused:
+            follow_ups: list[str] = []
+        elif follow_up_task is not None:
+            follow_ups = await follow_up_task
+        else:
+            follow_ups = await self._generate_follow_ups(query, full_answer)
 
         yield {
             "type": "done",
@@ -410,4 +453,5 @@ class RAGPipeline:
             "model": self.llm.model,
             "n_hits": len(hits),
             "session_id": session_id,
+            "follow_up_questions": follow_ups,
         }

@@ -31,6 +31,10 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${inter.variable} ${crimson.variable}`}
     >
+      <head>
+        {/* Set dark class before first paint to prevent FOUC */}
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('vn-legal-theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme:dark)').matches)){document.documentElement.classList.add('dark')}}catch(e){}})()` }} />
+      </head>
       <body className="min-h-screen font-sans antialiased">{children}</body>
     </html>
   );

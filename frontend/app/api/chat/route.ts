@@ -15,7 +15,11 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Trả về SESSION_EXPIRED thay vì Unauthorized để FE redirect về /login
+    return NextResponse.json(
+      { error: "SESSION_EXPIRED" },
+      { status: 401 }
+    );
   }
 
   const body = await req.json();
